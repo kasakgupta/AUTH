@@ -48,4 +48,16 @@ export async function getMe(req, res) {
     if (!token) {
         return res.status(401).json({ message: 'No token provided' });
     }
+
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+
+    const user = await UserModel.findById(decoded.id);
+    res.status(200).json({
+        message: 'User retrieved successfully',
+        user: {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+        },
+    });
 }
