@@ -1,4 +1,4 @@
-import UserModel from '../models/user.model.js';
+import userModel from '../models/user.model.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
@@ -6,7 +6,7 @@ import config from '../config/config.js';
 export async function register(req, res) {
     const { username, email, password } = req.body;
 
-    const isAlreadyRegistered = await UserModel.findOne({
+    const isAlreadyRegistered = await userModel.findOne({
         $or: [{ username }, { email }]
     });
 
@@ -16,18 +16,27 @@ export async function register(req, res) {
 
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
 
-    const user = new UserModel({
+    const user = await userModel.create({
         username,
         email,
         password: hashedPassword
     });
 
-    const token = jwt.sign({
+    const accessToken = jwt.sign({
         id: user._id,
     },
         config.JWT_SECRET,
         {
-            expiresIn: '1d'
+            expiresIn: '15m'
+        }
+    );
+
+    const refreshToken = jwt.sign({
+        id: user._id,
+    },
+        config.JWT_SECRET,
+        {
+            expiresIn: '7d'
         }
     );
 
@@ -38,7 +47,7 @@ export async function register(req, res) {
             username: user.username,
             email: user.email,
         },
-        token,
+        accessToken
     });
 }
 
@@ -51,9 +60,9 @@ export async function getMe(req, res) {
 
     const decoded = jwt.verify(token, config.JWT_SECRET);
 
-    const user = await UserModel.findById(decoded.id);
+    const user = await userModel.findById(decoded.id);
     res.status(200).json({
-        message: 'User retrieved successfully',
+        message: "User retrieved successfully",
         user: {
             id: user._id,
             username: user.username,
