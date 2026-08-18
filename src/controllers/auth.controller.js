@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
 import sessionModel from '../models/session.model.js';
+import { sendEmail } from '../services/email.service.js';
 
 export async function register(req, res) {
     const { username, email, password } = req.body;
@@ -23,39 +24,12 @@ export async function register(req, res) {
         password: hashedPassword
     });
 
-    const refreshToken = jwt.sign({
-        id: user._id,
-    },
-        config.JWT_SECRET,
-        {
-            expiresIn: '7d'
-        }
+    await sendEmail(
+        email,
+        'Welcome to Our Service',
+        `Hello ${user.username},\n\nThank you for registering with us!`,
+        `<p>Hello ${user.username},</p><p>Thank you for registering with us!</p>`
     );
-    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-
-    const session = await sessionModel.create({
-        user: user._id,
-        refreshTokenHash,
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-    });
-
-    const accessToken = jwt.sign({
-        id: user._id,
-        sessionId: session._id
-    },
-        config.JWT_SECRET,
-        {
-            expiresIn: '15m'
-        }
-    );
-
-    res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
 
     res.status(201).json({
         message: 'User registered successfully',
@@ -63,8 +37,8 @@ export async function register(req, res) {
             id: user._id,
             username: user.username,
             email: user.email,
-        },
-        accessToken
+            verified: user.verified
+        }
     });
 }
 
