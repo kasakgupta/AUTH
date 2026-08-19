@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
 import sessionModel from '../models/session.model.js';
 import { sendEmail } from '../services/email.service.js';
+import { generateOtp, OtpHTML } from '../utils/utils.js';
+import otpModel from '../models/otp.model.js';
 
 export async function register(req, res) {
     const { username, email, password } = req.body;
@@ -24,12 +26,19 @@ export async function register(req, res) {
         password: hashedPassword
     });
 
-    await sendEmail(
+    const otp = generateOtp();
+    const htmlContent = OtpHTML(otp);
+
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    await otpModel.create({
         email,
-        'Welcome to Our Service',
-        `Hello ${user.username},\n\nThank you for registering with us!`,
-        `<p>Hello ${user.username},</p><p>Thank you for registering with us!</p>`
-    );
+        user: user._id,
+        otpHash: otpHash
+    });
+
+    await sendEmail({ email, subject: "Otp Verification", text: `Your OTP is ${otp}`, html: htmlContent });
+
+    
 
     res.status(201).json({
         message: 'User registered successfully',
@@ -48,6 +57,10 @@ export async function login(req, res) {
 
     if (!user) {
         return res.status(400).json({ message: "Invalid email or password" });
+    }
+
+    if (!user.verified) {
+        return res.status(400).json({ message: "Please verify your email before logging in" });
     }
 
     const hashedPassword = crypto.createHash('sha256')
@@ -242,4 +255,41 @@ export async function logoutAll(req, res) {
     res.clearCookie('refreshToken');
     res.status(200).json({ message: "Logged out from all devices successfully" });
 
+}
+
+export async function verifyEmail(req, res) {
+    const { email, otp } = req.body ?? {};
+
+    if (!email || !otp) {
+        return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    const otpHash = crypto.createHash('sha256').update(String(otp)).digest('hex');
+
+    const otpRecord = await otpModel.findOne({ email, otpHash });
+
+    if (!otpRecord) {
+        return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    const user = await userModel.findByIdAndUpdate(
+        otpRecord.user,
+        { verified: true },
+        { new: true }
+    );
+
+    if (!user) {
+        return res.status(404).json({ message: "User not found" });
+    }
+
+    await otpModel.deleteMany({ user: user._id });
+
+    res.status(200).json({
+        message: "Email verified successfully",
+        user: {
+            id: user._id,
+            email: user.email,
+            verified: user.verified
+        },
+    });
 }
